@@ -24,8 +24,14 @@ class Commands extends PluginBase{
      */
     private $plugin = null;
 
-	public function __construct(Main $plugin){
+// 	public function __construct(Main $plugin){
+// 		$this->plugin = $plugin;
+// 	}
+	
+	public function __construct(string $name, Main $plugin){
+		parent::__construct($name);
 		$this->plugin = $plugin;
+		$this->usageMessage = "";
 	}
 	
 	public function onCommand(CommandSender $sender, Command $cmd, string $label, array $args) : bool{
