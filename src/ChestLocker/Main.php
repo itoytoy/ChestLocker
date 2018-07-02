@@ -11,8 +11,13 @@
 
 namespace ChestLocker;
 
-use pocketmine\plugin\PluginBase;
 use pocketmine\event\Listener;
+use pocketmine\event\player\PlayerInteractEvent;
+use pocketmine\event\player\PlayerJoinEvent;
+use pocketmine\event\player\PlayerQuitEvent;
+use pocketmine\event\block\BlockBreakEvent;
+
+use pocketmine\plugin\PluginBase;
 use pocketmine\utils\Config;
 use pocketmine\command\CommandExecutor;
 use pocketmine\permission\Permission;
@@ -20,7 +25,14 @@ use pocketmine\Player;
 use pocketmine\level\Level;
 use pocketmine\utils\TextFormat;
 
-class Main extends PluginBase{
+use pocketmine\command\Command;
+use pocketmine\command\CommandSender;
+use pocketmine\event\player\PlayerRespawnEvent;
+
+use pocketmine\math\Vector3;
+use pocketmine\tile\Chest;
+
+class Main extends PluginBase implements Listener {
 	
 	//About Plugin Const
 	const PRODUCER = "EvolSoft";
@@ -74,11 +86,13 @@ class Main extends PluginBase{
         @mkdir($this->getDataFolder());
         @mkdir($this->getDataFolder() . Main::_DIRECTORY);
         $this->saveDefaultConfig();
-        $this->data = $this->getDataFolder();
-        $this->getCommand("chestlocker")->setExecutor(new Commands\Commands($this));
-        $this->getCommand("lockchest")->setExecutor(new Commands\LockChest($this));
-        $this->getCommand("unlockchest")->setExecutor(new Commands\UnlockChest($this));
-	    $this->getServer()->getPluginManager()->registerEvents(new EventListener($this), $this);
+		$this->data = $this->getDataFolder();
+		$this->getServer()->getPluginManager()->registerEvents($this, $this);
+		
+        // $this->getCommand("chestlocker")->setExecutor(new Commands\Commands($this));
+        // $this->getCommand("lockchest")->setExecutor(new Commands\LockChest($this));
+        // $this->getCommand("unlockchest")->setExecutor(new Commands\UnlockChest($this));
+	    // $this->getServer()->getPluginManager()->registerEvents(new EventListener($this), $this);
     }
     
     public function setCommandStatus($int, $player){
@@ -142,6 +156,207 @@ class Main extends PluginBase{
     	}else{
     		return 0; //Failed: Chest not registered
     	}
+	}
+	
+
+	public function onCommand(CommandSender $sender, Command $command, string $label, array $args) : bool{
+    	switch(strtolower($command->getName())) {
+            case "chestlocker": {
+                if (isset($args[0])) {
+                    $args[0] = strtolower($args[0]);
+                    if ($args[0] == "help") {
+                        if ($sender->hasPermission("chestlocker.commands.help")) {
+                            $sender->sendMessage($this->translateColors("&", "&c|| &8Available Commands &c||"));
+                            $sender->sendMessage($this->translateColors("&", "&c/chlock info &8> Show info about this plugin"));
+                            $sender->sendMessage($this->translateColors("&", "&c/chlock reload &8> Reload the config"));
+                            $sender->sendMessage($this->translateColors("&", "&c/lockchest &8> Lock a " . Main::ITEM_NAME_2));
+                            $sender->sendMessage($this->translateColors("&", "&c/unlockchest &8> Unlock a " . Main::ITEM_NAME_2));
+                            break;
+                        } else {
+                            $sender->sendMessage($this->translateColors("&", "&cYou don't have permissions to use this command"));
+                            break;
+                        }
+                    } elseif ($args[0] == "reload") {
+                        if ($sender->hasPermission("chestlocker.commands.reload")) {
+                            $this->reloadConfig();
+                            $sender->sendMessage($this->translateColors("&", Main::PREFIX . "&aConfiguration Reloaded."));
+                            break;
+                        } else {
+                            $sender->sendMessage($this->translateColors("&", "&cYou don't have permissions to use this command"));
+                            break;
+                        }
+                    } elseif ($args[0] == "info") {
+                        if ($sender->hasPermission("chestlocker.commands.info")) {
+                            $sender->sendMessage($this->translateColors("&", Main::PREFIX . "&8ChestLocker &cv" . Main::VERSION . " &8developed by&c " . Main::PRODUCER));
+                            $sender->sendMessage($this->translateColors("&", Main::PREFIX . "&8Website &c" . Main::MAIN_WEBSITE));
+                            break;
+                        } else {
+                            $sender->sendMessage($this->translateColors("&", "&cYou don't have permissions to use this command"));
+                            break;
+                        }
+                    }
+                } else {
+                    if ($sender->hasPermission("chestlocker.commands.help")) {
+                        $sender->sendMessage($this->translateColors("&", "&c|| &8Available Commands &c||"));
+                        $sender->sendMessage($this->translateColors("&", "&c/chlock info &8> Show info about this plugin"));
+                        $sender->sendMessage($this->translateColors("&", "&c/chlock reload &8> Reload the config"));
+                        $sender->sendMessage($this->translateColors("&", "&c/lockchest &8> Lock a " . Main::ITEM_NAME_2));
+                        $sender->sendMessage($this->translateColors("&", "&c/unlockchest &8> Unlock a " . Main::ITEM_NAME_2));
+                        break;
+                    } else {
+                        $sender->sendMessage($this->translateColors("&", "&cYou don't have permissions to use this command"));
+                        break;
+                    }
+                }
+                return true;
+			}
+			
+			case "unlockchest": {
+                if ($sender->hasPermission("chestlocker.commands.unlockchest")) {
+                    //Player Sender
+                    if ($sender instanceof Player) {
+                        if ($this->getCommandStatus($sender->getName()) == 0 || $this->getCommandStatus($sender->getName()) == 1) {
+                            $this->setCommandStatus(2, $sender->getName());
+                            $sender->sendMessage($this->translateColors("&", Main::PREFIX . "&2" . Main::ITEM_NAME . " unlock command enabled. Click the " . Main::ITEM_NAME_2 . " to unlock"));
+                        } else {
+                            $this->setCommandStatus(0, $sender->getName());
+                            $sender->sendMessage($this->translateColors("&", Main::PREFIX . "&4" . Main::ITEM_NAME . " unlock command disabled."));
+                        }
+                    } //Console Sender
+                    else {
+                        $sender->sendMessage($this->translateColors("&", Main::PREFIX . "&cYou can only perform this command as a player"));
+                        return true;
+                    }
+                } else {
+                    $sender->sendMessage($this->translateColors("&", "&cYou don't have permissions to use this command"));
+                    break;
+                }
+                return true;
+			}
+			
+			case "lockchest":
+            {
+				if($sender->hasPermission("chestlocker.commands.lockchest")){
+					//Player Sender
+					if($sender instanceof Player){
+						if($this->getCommandStatus($sender->getName()) == 0 || $this->getCommandStatus($sender->getName()) == 2){
+							$this->setCommandStatus(1, $sender->getName());
+							$sender->sendMessage($this->translateColors("&", Main::PREFIX . "&2" . Main::ITEM_NAME . " lock command enabled. Click the " . Main::ITEM_NAME_2 . " to lock"));
+						}else{
+							$this->setCommandStatus(0, $sender->getName());
+							$sender->sendMessage($this->translateColors("&", Main::PREFIX . "&4" . Main::ITEM_NAME . " lock command disabled."));
+						}
+					}
+					//Console Sender
+					else{
+						$sender->sendMessage($this->translateColors("&", Main::PREFIX . "&cYou can only perform this command as a player"));
+						return true;
+					}
+				}else{
+					$sender->sendMessage($this->translateColors("&", "&cYou don't have permissions to use this command"));
+					break;
+				}
+				return true;
+            }
+
+
+            default:
+                return false;
+        }
     }
-    
+	
+	
+	public function onPlayerJoin(PlayerJoinEvent $event) {
+        $this->setCommandStatus(0, $event->getPlayer()->getName());
+    }
+
+    public function onPlayerQuit(PlayerQuitEvent $event) {
+        $this->endCommandSession($event->getPlayer()->getName());
+    }
+
+    public function onChestOpen(PlayerInteractEvent $event) {
+        if ($event->getBlock()->getID() == Main::ITEM_ID) {
+            $chest = $event->getPlayer()->getLevel()->getTile($event->getBlock());
+            if ($chest instanceof Chest) {
+                //Check Command status
+                //0
+                if ($this->getCommandStatus($event->getPlayer()->getName()) == 0) {
+                    //Check if Chest is registered
+                    $paired = $chest->getPair();
+                    if ($this->isChestRegistered($chest->getLevel()->getName(), $chest->getX(), $chest->getY(), $chest->getZ()) && $this->getChestOwner($chest->getLevel()->getName(), $chest->getX(), $chest->getY(), $chest->getZ()) != strtolower($event->getPlayer()->getName()) || $paired != null && $this->isChestRegistered($paired->getLevel()->getName(), $paired->getX(), $paired->getY(), $paired->getZ()) && $this->getChestOwner($paired->getLevel()->getName(), $paired->getX(), $paired->getY(), $paired->getZ()) != strtolower($event->getPlayer()->getName())) {
+
+                        $event->setCancelled(true);
+                        $event->getPlayer()->sendMessage($this->translateColors("&", Main::PREFIX . "&4You aren't the owner of this " . Main::ITEM_NAME_2 . "."));
+                    }
+                }
+
+                //1
+                if ($this->getCommandStatus($event->getPlayer()->getName()) == 1) {
+                    //Check if Chest is registered
+                    $paired = $chest->getPair();
+                    if ($this->isChestRegistered($chest->getLevel()->getName(), $chest->getX(), $chest->getY(), $chest->getZ())) {
+                        if ($this->getChestOwner($chest->getLevel()->getName(), $chest->getX(), $chest->getY(), $chest->getZ()) != strtolower($event->getPlayer()->getName()) || $paired != null && $this->isChestRegistered($paired->getLevel()->getName(), $paired->getX(), $paired->getY(), $paired->getZ()) && $this->getChestOwner($paired->getLevel()->getName(), $paired->getX(), $paired->getY(), $paired->getZ()) != strtolower($event->getPlayer()->getName())) {
+                            $event->getPlayer()->sendMessage($this->translateColors("&", Main::PREFIX . "&4You aren't the owner of this " . Main::ITEM_NAME_2 . "."));
+                        } else {
+                            $event->getPlayer()->sendMessage($this->translateColors("&", Main::PREFIX . "&2" . Main::ITEM_NAME . " already locked"));
+                        }
+                    } else {
+                        $event->getPlayer()->sendMessage($this->translateColors("&", Main::PREFIX . "&2" . Main::ITEM_NAME . " locked"));
+                        $this->lockChest($chest->getLevel()->getName(), $chest->getX(), $chest->getY(), $chest->getZ(), $event->getPlayer()->getName());
+                        if ($paired != null && !($this->isChestRegistered($paired->getLevel()->getName(), $paired->getX(), $paired->getY(), $paired->getZ()))) {
+                            $this->lockChest($paired->getLevel()->getName(), $paired->getX(), $paired->getY(), $paired->getZ(), $event->getPlayer()->getName());
+                        }
+                    }
+                    $event->setCancelled(true);
+                    $this->setCommandStatus(0, $event->getPlayer()->getName());
+                }
+                //2
+                if ($this->getCommandStatus($event->getPlayer()->getName()) == 2) {
+                    //Check if Chest is registered
+                    if ($this->isChestRegistered($chest->getLevel()->getName(), $chest->getX(), $chest->getY(), $chest->getZ())) {
+                        if ($this->getChestOwner($chest->getLevel()->getName(), $chest->getX(), $chest->getY(), $chest->getZ()) != strtolower($event->getPlayer()->getName())) {
+                            $event->getPlayer()->sendMessage($this->translateColors("&", Main::PREFIX . "&4You aren't the owner of this " . Main::ITEM_NAME_2 . "."));
+                        } else {
+                            $event->getPlayer()->sendMessage($this->translateColors("&", Main::PREFIX . "&2" . Main::ITEM_NAME . " unlocked"));
+                            $this->unlockChest($chest->getLevel()->getName(), $chest->getX(), $chest->getY(), $chest->getZ(), $this->getChestOwner($chest->getLevel()->getName(), $chest->getX(), $chest->getY(), $chest->getZ()));
+                            $paired = $chest->getPair();
+                            if ($paired != null && $this->isChestRegistered($paired->getLevel()->getName(), $paired->getX(), $paired->getY(), $paired->getZ())) {
+                                $this->unlockChest($paired->getLevel()->getName(), $paired->getX(), $paired->getY(), $paired->getZ(), $this->getChestOwner($paired->getLevel()->getName(), $paired->getX(), $paired->getY(), $paired->getZ()));
+                            }
+                        }
+                    } else {
+                        $event->getPlayer()->sendMessage($this->translateColors("&", Main::PREFIX . "&2" . Main::ITEM_NAME . " not registered"));
+                    }
+                    $event->setCancelled(true);
+                    $this->setCommandStatus(0, $event->getPlayer()->getName());
+                }
+            }
+        }
+    }
+
+    public function onBlockDestroy(BlockBreakEvent $event) {
+        $this->cfg = $this->getConfig()->getAll();
+        $player = $event->getPlayer();
+        if ($event->getBlock()->getID() == Main::ITEM_ID) {
+            $chest = $event->getPlayer()->getLevel()->getTile($event->getBlock());
+            if ($chest instanceof Chest) {
+                $level = $chest->getLevel()->getName();
+                $x = $chest->getX();
+                $y = $chest->getY();
+                $z = $chest->getZ();
+                $paired = $chest->getPair();
+                //Check if chest is registered
+                if ($this->isChestRegistered($level, $x, $y, $z)) {
+                    if (($this->isChestRegistered($chest->getLevel()->getName(), $chest->getX(), $chest->getY(), $chest->getZ()) && $this->getChestOwner($level, $x, $y, $z) != strtolower($event->getPlayer()->getName()) || $paired != null && $this->isChestRegistered($paired->getLevel()->getName(), $paired->getX(), $paired->getY(), $paired->getZ()) && $this->getChestOwner($paired->getLevel()->getName(), $paired->getX(), $paired->getY(), $paired->getZ()) != strtolower($event->getPlayer()->getName()))) {
+                        $player->sendMessage($this->translateColors("&", Main::PREFIX . "&4You aren't the owner of this " . Main::ITEM_NAME_2 . "."));
+                        $event->setCancelled(true);
+                    } else {
+                        $this->unlockChest($level, $x, $y, $z, $this->getChestOwner($level, $x, $y, $z));
+                        if ($paired != null && $this->isChestRegistered($paired->getLevel()->getName(), $paired->getX(), $paired->getY(), $paired->getZ()))
+                            $this->unlockChest($level, $paired->getX(), $y, $paired->getZ(), $this->getChestOwner($level, $paired->getX(), $y, $paired->getZ()));
+                    }
+                }
+            }
+        }
+    }
 }
